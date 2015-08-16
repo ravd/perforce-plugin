@@ -31,6 +31,10 @@ import hudson.model.Hudson;
 import hudson.model.Node;
 import hudson.model.TaskListener;
 import hudson.plugins.perforce.PerforceSCM;
+
+import org.jenkinsci.lib.envinject.EnvInjectException;
+import org.jenkinsci.lib.envinject.service.EnvVarsResolver;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -240,6 +244,12 @@ public class MacroStringHelper {
             JobSubstitutionHelper.getDefaultSubstitutions(project, substitutions);
         }
         getDefaultSubstitutions(instance, substitutions);
+        
+        // in case of SCM polling add env-injected variables from previous build
+        if (project != null) {
+            addEnvInjectedSubstitutions(project, node, substitutions);
+        }
+
         outputString = substituteParametersNoCheck(outputString, substitutions);    
         
         return outputString;
@@ -335,5 +345,25 @@ public class MacroStringHelper {
         if (rootUrl != null) {   
             subst.put("BUILD_URL", rootUrl + build.getUrl());
         }
+    }
+
+    private static void addEnvInjectedSubstitutions(
+            @Nonnull AbstractProject project,
+            Node node,
+            @Nonnull Map<String, String> substitutions) {
+            // add variable from previous build in case the variable is not yet set
+            try {
+                EnvVarsResolver varsResolver = new EnvVarsResolver();
+                Map<String, String> pollingEnvVars = varsResolver.getPollingEnvVars(project, node);
+                for (String key : pollingEnvVars.keySet())
+                {
+                    if (! substitutions.containsKey(key))
+                    {
+                        substitutions.put(key, pollingEnvVars.get(key));
+                    }
+                }
+            } catch (EnvInjectException envInjectException) {
+                // ignore variables from env-inject are not critical
+            }
     }
 }
